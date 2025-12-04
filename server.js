@@ -1,52 +1,56 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-
 const app = express();
+
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public')); // Serve os arquivos do frontend
+app.use(express.static('public')); // Serve o site e os assets
 
-// Símbolos e seus pesos (quanto maior o número, mais fácil de sair)
-// 🐯 é o Wild/Raro
+// Configuração dos Símbolos (Matemática do Jogo)
+// O ID deve ser igual ao nome do arquivo da imagem (sem o .png)
 const items = [
-    { id: 'laranja', icon: '🍊', weight: 50 },
-    { id: 'saco', icon: '💰', weight: 40 },
-    { id: 'envelope', icon: '🧧', weight: 30 },
-    { id: 'tigre', icon: '🐯', weight: 10 } 
+    { id: 'neon', weight: 60 },     // Mais comum
+    { id: 'moeda', weight: 40 },
+    { id: 'espada', weight: 30 },
+    { id: 'robo', weight: 15 },
+    { id: 'samurai', weight: 5 }    // Mais raro (Jackpot)
 ];
 
-// Função para escolher um símbolo baseado no peso (RNG Ponderado)
+// Função RNG (Gerador de Números Aleatórios)
 function getRandomSymbol() {
     const totalWeight = items.reduce((acc, item) => acc + item.weight, 0);
     let random = Math.random() * totalWeight;
     
     for (const item of items) {
         if (random < item.weight) {
-            return item.icon;
+            return item.id;
         }
         random -= item.weight;
     }
-    return items[0].icon;
+    return items[0].id; // Retorno de segurança
 }
 
 app.post('/spin', (req, res) => {
-    // Gera 3 símbolos independentes
+    // 1. Gera o resultado das 3 bobinas
     const reel1 = getRandomSymbol();
     const reel2 = getRandomSymbol();
     const reel3 = getRandomSymbol();
 
-    // Verifica vitória (3 iguais)
+    // 2. Verifica se ganhou (Lógica: 3 iguais)
     let win = false;
     let multiplier = 0;
 
     if (reel1 === reel2 && reel2 === reel3) {
         win = true;
-        if (reel1 === '🐯') multiplier = 100; // Tigre paga muito
-        else if (reel1 === '🧧') multiplier = 50;
-        else multiplier = 10;
+        // Tabela de Pagamentos
+        if (reel1 === 'samurai') multiplier = 500; // Jackpot!
+        else if (reel1 === 'robo') multiplier = 100;
+        else if (reel1 === 'espada') multiplier = 50;
+        else if (reel1 === 'moeda') multiplier = 20;
+        else multiplier = 5;
     }
 
+    // 3. Envia resposta para o Frontend desenhar
     res.json({
         reels: [reel1, reel2, reel3],
         win: win,
@@ -56,5 +60,5 @@ app.post('/spin', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`🗡️  Cyber Samurai rodando na porta ${PORT}`);
 });
