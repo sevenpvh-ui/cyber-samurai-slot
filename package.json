@@ -1,0 +1,13 @@
+{
+  "name": "fortune-tiger-clone",
+  "version": "1.0.0",
+  "description": "Clone simples do jogo do tigre",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
