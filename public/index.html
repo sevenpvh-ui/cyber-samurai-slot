@@ -13,11 +13,12 @@
             justify-content: center; 
             align-items: center; 
             height: 100vh; 
-            overflow: hidden;
-            font-family: 'Courier New', monospace; /* Fonte estilo Hacker */
+            width: 100vw;
+            overflow: hidden; /* Evita barras de rolagem */
+            font-family: 'Courier New', monospace; 
         }
         
-        /* Camada da Interface (Botões e Textos HTML em cima do Canvas) */
+        /* Camada da Interface (Botões e Textos) */
         #ui-layer {
             position: absolute;
             bottom: 30px;
@@ -71,24 +72,31 @@
             width: 800,
             height: 600,
             backgroundColor: 0x000000,
+            resolution: window.devicePixelRatio || 1,
         });
         document.body.appendChild(app.view);
 
-        // Ajuste de escala para telas menores (Responsividade simples)
+        // --- SISTEMA DE REDIMENSIONAMENTO (RESPONSIVO) ---
         function resize() {
             const ratio = Math.min(window.innerWidth / 800, window.innerHeight / 600);
             app.stage.scale.set(ratio);
             app.renderer.resize(800 * ratio, 600 * ratio);
-            // Centraliza o container principal
+            
+            // Centraliza o container principal na tela
             if(reelContainer) {
                 reelContainer.x = (app.screen.width - (REEL_WIDTH * 3 * ratio)) / 2;
+                // Centraliza verticalmente se sobrar espaço
+                const availableHeight = app.screen.height;
+                const machineHeight = 600 * ratio; 
+                // Ajuste fino para não ficar colado no topo
+                reelContainer.y = 50 * ratio; 
             }
         }
         window.addEventListener('resize', resize);
 
         // Variáveis Globais
         const REEL_WIDTH = 200;
-        const SYMBOL_SIZE = 160; 
+        const SYMBOL_SIZE = 150; // Tamanho ideal do ícone
         const reels = [];
         const reelContainer = new PIXI.Container();
         
@@ -97,23 +105,25 @@
         // --- 1. CARREGAMENTO DOS ASSETS ---
         async function init() {
             try {
-                // Carrega o JSON do TexturePacker e o Fundo ao mesmo tempo
+                // Carrega assets (TexturePacker + Fundo)
+                // Se der erro aqui, verifique se os nomes dos arquivos estão certos na pasta assets
                 const texturePromise = PIXI.Assets.load('assets/samurai.json');
                 const bgPromise = PIXI.Assets.load('assets/background.png');
                 
                 const [sheet, bgTexture] = await Promise.all([texturePromise, bgPromise]);
 
-                // Configura o Fundo
+                // Configura o Fundo (Background)
                 const background = new PIXI.Sprite(bgTexture);
-                background.width = 800;  // Largura fixa interna
-                background.height = 600; // Altura fixa interna
-                background.alpha = 0.5;  // Escurece para destacar os slots
-                app.stage.addChild(background); // Adiciona na camada 0 (fundo)
+                background.width = 800;
+                background.height = 600;
+                background.alpha = 0.5; // Escurece o fundo
+                app.stage.addChild(background);
 
-                // Adiciona o container dos slots na frente do fundo
+                // Adiciona a máquina na frente do fundo
                 app.stage.addChild(reelContainer);
 
-                // Prepara as texturas (baseado nos nomes dos seus arquivos PNG)
+                // Carrega as texturas dos ícones
+                // IMPORTANTE: Os nomes aqui devem bater com os nomes dentro do TexturePacker
                 slotTextures = [
                     sheet.textures['samurai.png'], 
                     sheet.textures['robo.png'],
@@ -123,17 +133,16 @@
                 ];
 
                 createMachine();
-                resize(); // Ajusta tamanho inicial
+                resize(); // Ajusta o tamanho da tela na primeira vez
             } catch (error) {
                 console.error("ERRO CRÍTICO:", error);
-                document.getElementById('msg').innerText = "ERRO: Verifique a pasta assets!";
+                document.getElementById('msg').innerText = "ERRO: Verifique o console (F12)";
                 document.getElementById('msg').style.color = "red";
             }
         }
 
-        // --- 2. CRIAÇÃO DA MÁQUINA ---
+        // --- 2. CRIAÇÃO DA MÁQUINA (COM CORREÇÃO DE TAMANHO) ---
         function createMachine() {
-            // Centraliza visualmente o container de rolos
             reelContainer.y = 50;
             reelContainer.x = (800 - (REEL_WIDTH * 3)) / 2; 
 
@@ -148,27 +157,33 @@
                     blur: new PIXI.BlurFilter(),
                 };
                 
-                // Configura o filtro de desfoque (Blur)
                 reel.blur.blurX = 0;
                 reel.blur.blurY = 0;
                 reelColumn.filters = [reel.blur];
 
-                // Cria 4 símbolos iniciais (para cobrir a tela)
+                // Cria 4 símbolos iniciais para preencher a coluna
                 for (let j = 0; j < 4; j++) {
-                    const symbol = new PIXI.Sprite(slotTextures[Math.floor(Math.random() * slotTextures.length)]);
-                    symbol.y = j * SYMBOL_SIZE;
-                    // Centraliza o símbolo dentro da coluna
-                    symbol.anchor.set(0.5); 
-                    symbol.x = REEL_WIDTH / 2;
-                    symbol.scale.set(0.6); // Ajusta tamanho da imagem se for muito grande
+                    const texture = slotTextures[Math.floor(Math.random() * slotTextures.length)];
+                    const symbol = new PIXI.Sprite(texture);
                     
+                    symbol.y = j * SYMBOL_SIZE;
+                    symbol.anchor.set(0.5); // Ponto central da imagem
+                    symbol.x = REEL_WIDTH / 2; // Centraliza na coluna
+
+                    // --- A MÁGICA: FORÇA A IMAGEM A FICAR PEQUENA ---
+                    // Isso conserta o bug da "espada gigante"
+                    const scaleX = (SYMBOL_SIZE * 0.8) / symbol.width;
+                    const scaleY = (SYMBOL_SIZE * 0.8) / symbol.height;
+                    const finalScale = Math.min(scaleX, scaleY); // Usa o menor para não distorcer
+                    symbol.scale.set(finalScale);
+                    // ------------------------------------------------
+
                     reelColumn.addChild(symbol);
                     reel.symbols.push(symbol);
                 }
                 reels.push(reel);
             }
 
-            // Ativa o botão
             document.getElementById('spinBtn').addEventListener('click', startSpin);
         }
 
@@ -179,12 +194,11 @@
             
             if (btn.disabled) return;
             
-            // Estado de Giro
             btn.disabled = true;
-            msg.innerText = "GIRANDO...";
+            msg.innerText = "CYBER SPIN...";
             msg.style.color = "#00ffcc";
 
-            // Aplica efeito de velocidade (Blur)
+            // Ativa o desfoque (Blur) para dar sensação de velocidade
             reels.forEach(r => { r.blur.blurY = 20; });
 
             try {
@@ -196,38 +210,44 @@
                 const stopReel = (index) => {
                     setTimeout(() => {
                         const reel = reels[index];
-                        reel.blur.blurY = 0; // Tira o borrão
+                        reel.blur.blurY = 0; // Remove o borrão
 
-                        // Define qual imagem deve aparecer (Resultado do servidor)
-                        // Backend manda "samurai", nós adicionamos ".png" para achar no JSON
+                        // Define a imagem final baseada na resposta do servidor
                         const textureName = data.reels[index] + ".png"; 
-                        const texture = PIXI.Assets.cache.get('assets/samurai.json').textures[textureName];
+                        const newTexture = PIXI.Assets.cache.get('assets/samurai.json').textures[textureName];
 
-                        // Troca as texturas visualmente
-                        // Mudamos o segundo símbolo (o central) para o resultado
-                        reel.symbols[1].texture = texture;
-                        // Embaralha os outros só para variar
+                        // Atualiza a imagem do meio (a que vale)
+                        const targetSymbol = reel.symbols[1];
+                        targetSymbol.texture = newTexture;
+                        
+                        // --- REAPLICA A CORREÇÃO DE TAMANHO NA NOVA IMAGEM ---
+                        targetSymbol.scale.set(1); // Reseta escala
+                        const scaleX = (SYMBOL_SIZE * 0.8) / targetSymbol.width;
+                        const scaleY = (SYMBOL_SIZE * 0.8) / targetSymbol.height;
+                        targetSymbol.scale.set(Math.min(scaleX, scaleY));
+                        // ----------------------------------------------------
+
+                        // Troca os outros símbolos aleatoriamente
                         reel.symbols[0].texture = slotTextures[Math.floor(Math.random() * slotTextures.length)];
                         reel.symbols[2].texture = slotTextures[Math.floor(Math.random() * slotTextures.length)];
 
-                        // Efeito de "Tranco" (Shake) ao parar
+                        // Efeito visual de "tranco" ao parar
                         const startY = reel.container.y;
                         reel.container.y = startY + 30;
                         setTimeout(() => { reel.container.y = startY; }, 150);
 
-                        // Se for o último rolo, finaliza
+                        // Se for o último rolo
                         if (index === 2) {
                             btn.disabled = false;
                             if (data.win) {
-                                msg.innerText = `💰 BIG WIN! ${data.multiplier}x 💰`;
-                                msg.style.color = "#ffcc00"; // Dourado
-                                playWinAnimation(); // (Opcional: implementar efeitos de partículas)
+                                msg.innerText = `BIG WIN! ${data.multiplier}x`;
+                                msg.style.color = "#ffcc00"; 
                             } else {
                                 msg.innerText = "TENTE NOVAMENTE";
                                 msg.style.color = "#fff";
                             }
                         }
-                    }, index * 400 + 800); // Tempos: 0.8s, 1.2s, 1.6s
+                    }, index * 400 + 800);
                 };
 
                 stopReel(0);
@@ -236,17 +256,11 @@
 
             } catch (e) {
                 console.error(e);
-                msg.innerText = "ERRO DE CONEXÃO";
+                msg.innerText = "ERRO DE REDE";
                 msg.style.color = "red";
                 btn.disabled = false;
                 reels.forEach(r => { r.blur.blurY = 0; });
             }
-        }
-
-        // Placeholder para animação futura
-        function playWinAnimation() {
-            // Aqui poderíamos adicionar confetes ou raios
-            console.log("Efeitos de vitória!");
         }
 
         init();
